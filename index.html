@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Word Memory Experiment</title>
+
+<style>
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    font-family: Arial, sans-serif;
+
+    background: #f4f6fa;
+    color: #172033;
+}
+
+.container {
+    width: min(650px, 90%);
+    min-height: 350px;
+
+    padding: 45px;
+
+    background: white;
+
+    border-radius: 18px;
+
+    box-shadow: 0 8px 30px rgba(0,0,0,0.10);
+
+    text-align: center;
+}
+
+h1 {
+    margin-bottom: 25px;
+}
+
+p {
+    line-height: 1.6;
+}
+
+input {
+    width: 80%;
+
+    padding: 13px;
+
+    border: 1px solid #ccd2df;
+    border-radius: 8px;
+
+    font-size: 17px;
+
+    outline: none;
+}
+
+input:focus {
+    border-color: #3157d5;
+}
+
+button {
+    padding: 13px 26px;
+
+    border: none;
+    border-radius: 9px;
+
+    background: #3157d5;
+    color: white;
+
+    font-size: 16px;
+
+    cursor: pointer;
+}
+
+button:hover {
+    background: #2647b5;
+}
+
+button:disabled {
+    background: #9ca3af;
+    cursor: not-allowed;
+}
+
+.sentence {
+    margin: 75px 0;
+
+    font-size: 30px;
+    font-weight: 600;
+
+    min-height: 40px;
+}
+
+.progress {
+    color: #667085;
+    margin-bottom: 30px;
+}
+
+.hidden {
+    display: none !important;
+}
+
+</style>
+
+</head>
+
+
+<body>
+
+
+<div class="container">
+
+
+<!-- =====================================
+     INTRO
+===================================== -->
+
+<div id="intro">
+
+    <h1>Word Memory Experiment</h1>
+
+    <p>
+        You will see each sentence for 7 seconds.
+    </p>
+
+    <p>
+        Try to remember all the words in the sentence.
+    </p>
+
+    <p>
+        After the sentence disappears, you will be
+        asked to recall one word.
+    </p>
+
+    <p>
+        Please answer as quickly and accurately as possible.
+    </p>
+
+    <br>
+
+    <input
+        id="participantID"
+        type="text"
+        placeholder="Enter Participant ID"
+        autocomplete="off"
+    >
+
+    <br><br>
+
+    <button id="startButton" onclick="startExperiment()">
+        Start Experiment
+    </button>
+
+</div>
+
+
+
+<!-- =====================================
+     EXPERIMENT
+===================================== -->
+
+<div id="experiment" class="hidden">
+
+    <div
+        id="progress"
+        class="progress">
+    </div>
+
+
+    <div
+        id="sentence"
+        class="sentence">
+    </div>
+
+
+    <div
+        id="question"
+        class="hidden">
+
+        <h2 id="questionText"></h2>
+
+        <br>
+
+        <input
+            id="answer"
+            type="text"
+            placeholder="Type your answer"
+            autocomplete="off"
+        >
+
+        <br><br>
+
+        <button
+            id="submitButton"
+            onclick="submitAnswer()">
+
+            Submit
+
+        </button>
+
+    </div>
+
+</div>
+
+
+
+<!-- =====================================
+     FINISHED
+===================================== -->
+
+<div id="finished" class="hidden">
+
+    <h2>Thank you!</h2>
+
+    <p>
+        Your responses have been recorded.
+    </p>
+
+</div>
+
+
+</div>
+
+
+
+<script>
+
+
+/* =====================================================
+   GOOGLE APPS SCRIPT URL
+===================================================== */
+
+/*
+IMPORTANT:
+
+Replace YOUR_URL_HERE with your actual
+Google Apps Script Web App URL.
+
+It should look like:
+
+https://script.google.com/macros/s/XXXXXXXX/exec
+*/
+
+const GOOGLE_SCRIPT_URL =
+"https://script.google.com/macros/s/AKfycbyghzuwp_AOGEpMKQdNgUKrKH84Ctm-AwDLvy5YE-umo2e_qLtM5F2k8vcXXzrK8Ulg/exec";
+
+
+
+/* =====================================================
+   EXPERIMENT SETTINGS
+===================================================== */
+
+/*
+Sentence is shown for exactly 7 seconds.
+*/
+
+const SENTENCE_TIME = 3000;
+
+
+
+/* =====================================================
+   SENTENCES
+===================================================== */
+
+/*
+5 SEMANTIC
+5 NON-SEMANTIC
+
+Every sentence has exactly 5 words.
+
+The experiment randomly asks for any word:
+1st, 2nd, 3rd, 4th, or 5th.
+*/
+
+const trials = [
+
+    { condition: "Semantic", sentence: "Tourists explored ancient Roman ruins." },
+    { condition: "Non-semantic", sentence: "Calendars whispered purple velvet secrets." },
+    { condition: "Semantic", sentence: "Gardeners planted colorful spring flowers." },
+    { condition: "Non-semantic", sentence: "Mountains negotiated strange paper contracts." },
+    { condition: "Semantic", sentence: "Mechanics repaired damaged car engines." },
+    { condition: "Non-semantic", sentence: "Envelopes dreamed impossible silver melodies." },
+    { condition: "Semantic", sentence: "Professors explained complex scientific theories." },
+    { condition: "Non-semantic", sentence: "Telescopes swallowed distant velvet horizons." },
+    { condition: "Semantic", sentence: "Musicians performed lively evening concerts." },
+    { condition: "Non-semantic", sentence: "Staircases remembered forgotten winter equations." }
+];
+
+
+/* =====================================================
+   VARIABLES
+===================================================== */
+
+let participantID = "";
+
+let experimentTrials = [];
+
+let currentTrial = 0;
+
+let current = null;
+
+let questionStartTime = 0;
+
+let submitting = false;
+
+
+
+/* =====================================================
+   SHUFFLE
+===================================================== */
+
+function shuffle(array) {
+
+    return array
+        .map(value => ({
+            value: value,
+            random: Math.random()
+        }))
+        .sort((a, b) => a.random - b.random)
+        .map(item => item.value);
+
+}
+
+
+
+/* =====================================================
+   START EXPERIMENT
+===================================================== */
+
+function startExperiment() {
+
+    participantID =
+        document
+        .getElementById("participantID")
+        .value
+        .trim();
+
+
+    if (!participantID) {
+
+        alert("Please enter a Participant ID.");
+
+        return;
+
+    }
+
+
+    /*
+    Randomize sentence order.
+    */
+
+    experimentTrials =
+        shuffle(trials);
+
+
+    /*
+    Randomly select any word position
+    from 1 (first) to 5 (fifth).
+    */
+
+    experimentTrials =
+        experimentTrials.map(trial => {
+
+            return {
+
+                ...trial,
+
+                targetPosition:
+                    Math.floor(Math.random() * 5) + 1
+
+            };
+
+        });
+
+
+    currentTrial = 0;
+
+    submitting = false;
+
+
+    /*
+    Hide intro.
+    */
+
+    document
+        .getElementById("intro")
+        .classList
+        .add("hidden");
+
+
+    /*
+    Show experiment.
+    */
+
+    document
+        .getElementById("experiment")
+        .classList
+        .remove("hidden");
+
+
+    /*
+    Start first trial.
+    */
+
+    showTrial();
+
+}
+
+
+
+/* =====================================================
+   SHOW TRIAL
+===================================================== */
+
+function showTrial() {
+
+    current =
+        experimentTrials[currentTrial];
+
+
+    /*
+    Update progress.
+    */
+
+    document
+        .getElementById("progress")
+        .textContent =
+        `Trial ${currentTrial + 1} of ${experimentTrials.length}`;
+
+
+    /*
+    Get elements.
+    */
+
+    const sentence =
+        document.getElementById("sentence");
+
+    const question =
+        document.getElementById("question");
+
+    const answer =
+        document.getElementById("answer");
+
+    const submitButton =
+        document.getElementById("submitButton");
+
+
+    /*
+    Reset everything.
+    */
+
+    question.classList.add("hidden");
+
+    sentence.classList.remove("hidden");
+
+    answer.value = "";
+
+    submitButton.disabled = false;
+
+    submitting = false;
+
+
+    /*
+    Display sentence.
+    */
+
+    sentence.textContent =
+        current.sentence;
+
+
+    /*
+    ================================================
+    EXACT 7-SECOND ENCODING PERIOD
+    ================================================
+    */
+
+    const startTime =
+        performance.now();
+
+
+    function waitUntilFiveSeconds() {
+
+        const elapsed =
+            performance.now() - startTime;
+
+
+        const remaining =
+            SENTENCE_TIME - elapsed;
+
+
+        if (remaining > 0) {
+
+            setTimeout(
+                waitUntilFiveSeconds,
+                remaining
+            );
+
+            return;
+
+        }
+
+
+        /*
+        7 seconds have elapsed.
+        */
+
+
+        showQuestion();
+
+    }
+
+
+    waitUntilFiveSeconds();
+
+}
+
+
+
+/* =====================================================
+   SHOW QUESTION
+===================================================== */
+
+function showQuestion() {
+
+    const sentence =
+        document.getElementById("sentence");
+
+    const question =
+        document.getElementById("question");
+
+    const answer =
+        document.getElementById("answer");
+
+
+    /*
+    Hide sentence.
+    */
+
+    sentence.classList.add("hidden");
+
+
+    /*
+    Determine target word position.
+    */
+
+    const position =
+        current.targetPosition;
+
+
+    const ordinal = {
+        1: "1st",
+        2: "2nd",
+        3: "3rd",
+        4: "4th",
+        5: "5th"
+    }[position];
+
+
+    /*
+    Display question.
+    */
+
+    document
+        .getElementById("questionText")
+        .textContent =
+        `What was the ${ordinal} word?`;
+
+
+    question.classList.remove("hidden");
+
+
+    /*
+    Clear answer.
+    */
+
+    answer.value = "";
+
+
+    /*
+    ================================================
+    START REACTION TIME CLOCK
+    ================================================
+    */
+
+    questionStartTime =
+        performance.now();
+
+
+    /*
+    Automatically focus answer box.
+    */
+
+    answer.focus();
+
+}
+
+
+
+/* =====================================================
+   SUBMIT ANSWER
+===================================================== */
+
+function submitAnswer() {
+
+    /*
+    Prevent double submission.
+    */
+
+    if (submitting) {
+
+        return;
+
+    }
+
+
+    const answerElement =
+        document.getElementById("answer");
+
+
+    const submitButton =
+        document.getElementById("submitButton");
+
+
+    const response =
+        answerElement.value.trim();
+
+
+    /*
+    Don't allow empty answers.
+    */
+
+    if (!response) {
+
+        return;
+
+    }
+
+
+    /*
+    Lock immediately.
+    */
+
+    submitting = true;
+
+    submitButton.disabled = true;
+
+
+    /*
+    ================================================
+    STOP REACTION TIME CLOCK
+    ================================================
+    */
+
+    const reactionTime =
+        Math.round(
+            performance.now() -
+            questionStartTime
+        );
+
+
+    /*
+    ================================================
+    GET CORRECT WORD
+    ================================================
+    */
+
+    const words =
+        current.sentence
+        .replace(/[.,!?]/g, "")
+        .split(/\s+/);
+
+
+    const correctWord =
+        words[current.targetPosition - 1];
+
+
+    /*
+    ================================================
+    CHECK ANSWER
+    ================================================
+    */
+
+    const isCorrect =
+        response.toLowerCase() ===
+        correctWord.toLowerCase();
+
+
+    /*
+    ================================================
+    CREATE DATA
+    ================================================
+    */
+
+    const data = {
+
+        participant_id:
+            participantID,
+
+        trial:
+            currentTrial + 1,
+
+        condition:
+            current.condition,
+
+        sentence:
+            current.sentence,
+
+        target_position:
+            current.targetPosition,
+
+        correct_word:
+            correctWord,
+
+        response:
+            response,
+
+        correct:
+            isCorrect ? 1 : 0,
+
+        reaction_time_ms:
+            reactionTime
+
+    };
+
+
+    /*
+    ================================================
+    SEND DATA TO GOOGLE SHEETS
+    ================================================
+
+    IMPORTANT:
+
+    We DO NOT wait for Google Sheets.
+
+    This prevents network speed from
+    affecting the experiment.
+    */
+
+    fetch(
+        GOOGLE_SCRIPT_URL,
+        {
+
+            method: "POST",
+
+            mode: "no-cors",
+
+            headers: {
+
+                "Content-Type":
+                    "text/plain;charset=utf-8"
+
+            },
+
+            body:
+                JSON.stringify(data)
+
+        }
+
+    ).catch(error => {
+
+        console.error(
+            "Could not save response:",
+            error
+        );
+
+    });
+
+
+    /*
+    ================================================
+    MOVE TO NEXT TRIAL IMMEDIATELY
+    ================================================
+    */
+
+    currentTrial++;
+
+
+    submitting = false;
+
+
+    if (
+        currentTrial >=
+        experimentTrials.length
+    ) {
+
+        finishExperiment();
+
+    }
+
+    else {
+
+        showTrial();
+
+    }
+
+}
+
+
+
+/* =====================================================
+   ENTER KEY
+===================================================== */
+
+document
+    .getElementById("answer")
+    .addEventListener(
+        "keydown",
+        function(event) {
+
+            if (event.key === "Enter") {
+
+                event.preventDefault();
+
+                submitAnswer();
+
+            }
+
+        }
+    );
+
+
+
+/* =====================================================
+   FINISH
+===================================================== */
+
+function finishExperiment() {
+
+    document
+        .getElementById("experiment")
+        .classList
+        .add("hidden");
+
+
+    document
+        .getElementById("finished")
+        .classList
+        .remove("hidden");
+
+}
+
+
+</script>
+
+
+</body>
+
+</html>
